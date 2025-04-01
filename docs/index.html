@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>eCTD PDF Validator</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; }
+    h1 { color: #2c3e50; }
+    .section { margin-top: 1.5rem; }
+    .section h2 { font-size: 1.2rem; color: #34495e; margin-bottom: 0.5rem; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
+    table, th, td { border: 1px solid #ccc; }
+    th, td { padding: 0.5rem; text-align: left; background-color: #f9f9f9; }
+    th { background-color: #e9e9e9; }
+    .success { color: green; }
+    .fail { color: red; }
+      .collapsible {
+      background-color: #f1f1f1;
+      color: #333;
+      cursor: pointer;
+      padding: 10px;
+      width: 100%;
+      border: none;
+      text-align: left;
+      outline: none;
+      font-size: 1.1rem;
+    }
+
+    .active, .collapsible:hover {
+      background-color: #ddd;
+    }
+
+    .content {
+      padding: 0 1rem;
+      display: none;
+      overflow: hidden;
+      background-color: #fafafa;
+      border-left: 2px solid #ccc;
+      border-right: 2px solid #ccc;
+      border-bottom: 2px solid #ccc;
+    }
+</style>
+</head>
+<body>
+  <h1>eCTD PDF Validator</h1>
+  <form id="uploadForm">
+    <div id="progressContainer" style="display:none; margin: 1rem 0;">
+      <p><strong>Processing PDF, please wait...</strong></p>
+      <div style="width: 100%; background: #eee; height: 20px; border-radius: 4px;">
+        <div id="progressBar" style="width: 0%; height: 100%; background: #5cb85c; border-radius: 4px;"></div>
+      </div>
+    </div>
+    <input type="file" id="pdfFile" name="file" accept="application/pdf" required />
+    <button type="submit">Validate</button>
+  </form>
+  <div id="result"></div>
+
+  <script>
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const fileInput = document.getElementById('pdfFile');
+      const resultDiv = document.getElementById('result');
+      resultDiv.innerHTML = '';
+      const progressContainer = document.getElementById('progressContainer');
+      const progressBar = document.getElementById('progressBar');
+      progressContainer.style.display = 'block';
+      progressBar.style.width = '25%';
+      const startTime = performance.now();
+
+      if (!fileInput.files.length) {
+        resultDiv.textContent = 'Please select a PDF file.';
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('file', fileInput.files[0]);
+
+      fetch('http://localhost:5050/validate', {
+        method: 'POST',
+        body: formData
+      })
+      .then(res => res.json())
+      .then(data => {
+        const { status, details } = data;
+        const statusText = document.createElement('p');
+        statusText.innerHTML = `<strong>Status:</strong> <span class="${status === 'PASS' ? 'success' : 'fail'}">${status}</span>`;
+                const endTime = performance.now();
+        const evalTime = ((endTime - startTime) / 1000).toFixed(2);
+
+        const fileSize = (fileInput.files[0].size / 1024).toFixed(2);
+        const fileInfo = document.createElement('p');
+        fileInfo.innerHTML = `<strong>PDF Size:</strong> ${fileSize} KB`;
+        resultDiv.appendChild(fileInfo);
+
+        const pageCount = details.pdf_info && details.pdf_info.metadata && details.pdf_info.metadata['PageCount'];
+        if (pageCount) {
+          const pageInfo = document.createElement('p');
+          pageInfo.innerHTML = `<strong>Total Pages:</strong> ${pageCount}`;
+          resultDiv.appendChild(pageInfo);
+        }
+
+        const timeInfo = document.createElement('p');
+        timeInfo.innerHTML = `<strong>Evaluation Time:</strong> ${evalTime} seconds`;
+        resultDiv.appendChild(timeInfo);
+
+        progressBar.style.width = '100%';
+        progressContainer.style.display = 'none';
+        resultDiv.appendChild(statusText);
+
+const summaryRaw = details['validation_summary'];
+if (summaryRaw) {
+  const summarySection = document.createElement('div');
+  summarySection.classList.add('section');
+  summarySection.innerHTML = `<h2>Validation Summary</h2>`;
+
+  const summaryTable = document.createElement('table');
+  const summaryHeader = document.createElement('tr');
+  summaryHeader.innerHTML = '<th>Category</th><th>Count</th>';
+  summaryTable.appendChild(summaryHeader);
+
+  summaryRaw.split(',').forEach(item => {
+    const [key, value] = item.split(':').map(s => s.trim());
+    const row = document.createElement('tr');
+    row.innerHTML = `<td>${key}</td><td>${value}</td>`;
+    summaryTable.appendChild(row);
+  });
+
+  summarySection.appendChild(summaryTable);
+  resultDiv.appendChild(summarySection);
+}
+        delete details['validation_summary'];
+const sortedKeys = Object.keys(details);
+if (sortedKeys.includes('pdf_info')) {
+  sortedKeys.splice(sortedKeys.indexOf('pdf_info'), 1);
+  sortedKeys.unshift('pdf_info');
+}
+
+for (const key of sortedKeys) {
+  const section = document.createElement('div');
+  section.classList.add('section');
+  const headerTitles = {
+  pdf_info: 'PDF Metadata',
+  live_controls: 'Live Interactive Controls by Page',
+  missing_sections: 'Missing Sections in Document',
+  missing_keywords: 'Missing Required Keywords',
+  missing_values: 'Missing Values for Required Keywords',
+  per_page_value_errors: 'Header Text Presence by Page',
+  missing_controls_pages: 'Pages Missing Live Controls',
+  pdf_compliance_errors: 'PDF Format Compliance Errors'
+};
+const displayHeader = headerTitles[key] || key.replace(/_/g, ' ');
+section.innerHTML = `<button class="collapsible">${displayHeader}</button><div class="content">`;
+  const content = details[key];
+
+  if (key === 'pdf_info' && content.metadata) {
+    const table = document.createElement('table');
+    const headerRow = document.createElement('tr');
+    headerRow.innerHTML = '<th>Key</th><th>Value</th>';
+    table.appendChild(headerRow);
+    for (const metaKey in content.metadata) {
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${metaKey}</td><td>${content.metadata[metaKey]}</td>`;
+      table.appendChild(row);
+    }
+    section.appendChild(table);
+  } else if (key === 'live_controls' && typeof content === 'object') {
+    const table = document.createElement('table');
+    const headerRow = document.createElement('tr');
+    headerRow.innerHTML = '<th>Page Number</th><th>Control</th>';
+    table.appendChild(headerRow);
+    for (const page in content) {
+      const controls = content[page];
+      controls.forEach((control, index) => {
+        const row = document.createElement('tr');
+        row.innerHTML = index === 0
+          ? `<td rowspan="${controls.length}">${page}</td><td>${control}</td>`
+          : `<td>${control}</td>`;
+        table.appendChild(row);
+      });
+    }
+    section.appendChild(table);
+  } else if (Array.isArray(content)) {
+    const table = document.createElement('table');
+    content.forEach(item => {
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${item}</td>`;
+      table.appendChild(row);
+    });
+    section.appendChild(table);
+  } else if (typeof content === 'object') {
+    for (const subkey in content) {
+      if (key === 'per_page_value_errors' && subkey !== 'Header Text Missing Pages') continue;
+      const subheader = document.createElement('h3');
+      subheader.textContent = subkey;
+      section.appendChild(subheader);
+      const table = document.createElement('table');
+      const items = Array.isArray(content[subkey]) ? content[subkey] : [content[subkey]];
+      if (key.includes('missing') || key.includes('errors')) {
+        const headerRow = document.createElement('tr');
+        headerRow.innerHTML = '<th>Item</th>';
+        table.appendChild(headerRow);
+      }
+      items.forEach(item => {
+        const row = document.createElement('tr');
+        row.innerHTML = `<td>${typeof item === 'object' ? JSON.stringify(item) : item}</td>`;
+        table.appendChild(row);
+      });
+      section.appendChild(table);
+    }
+  } else if (typeof content === 'string') {
+    section.innerHTML += `<p>${content}</p>`;
+  }
+  section.innerHTML += '</div>'; resultDiv.appendChild(section);
+        }
+      })
+      .catch(err => {
+        progressBar.style.width = '0%';
+        progressContainer.style.display = 'none';
+        resultDiv.textContent = 'Validation failed: ' + err;
+      });
+    });
+      window.addEventListener("load", function () {
+      const collapsibles = document.getElementsByClassName("collapsible");
+      for (let i = 0; i < collapsibles.length; i++) {
+        collapsibles[i].addEventListener("click", function () {
+          this.classList.toggle("active");
+          const content = this.nextElementSibling;
+          if (content.style.display === "block") {
+            content.style.display = "none";
+          } else {
+            content.style.display = "block";
+          }
+        });
+      }
+    });
+  </script>
+</body>
+</html>
